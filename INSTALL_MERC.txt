@@ -1,0 +1,438 @@
+/******************************************************************************
+ Protocol snippet by KaVir.  Released into the Public Domain in February 2011.
+ ******************************************************************************/
+
+In protocol.h: Update MUD_NAME and descriptor_t for your mud.
+
+In protocol.c: Update the fields in the SendMSSP() function.
+
+/***************************************************************************
+ * File: Makefile
+ * 
+ * Add protocol.o to the list of object files.
+ ***************************************************************************/
+
+/***************************************************************************
+ * File: merc.h
+ * 
+ * Include protocol.h directly after the copyright notice/s.
+ * 
+ * Or better yet put it in each c file that uses the protocol snippet.
+ ***************************************************************************/
+
+#include "protocol.h"
+
+/***************************************************************************
+ * File: merc.h
+ * 
+ * Add the protocol pointer to the end of the descriptor_data structure.
+ ***************************************************************************/
+
+struct	descriptor_data
+{
+    DESCRIPTOR_DATA *	next;
+    DESCRIPTOR_DATA *	snoop_by;
+    CHAR_DATA *		character;
+    CHAR_DATA *		original;
+    char *		host;
+    sh_int		descriptor;
+    sh_int		connected;
+    bool		fcommand;
+    char		inbuf		[4 * MAX_INPUT_LENGTH];
+    char		incomm		[MAX_INPUT_LENGTH];
+    char		inlast		[MAX_INPUT_LENGTH];
+    int			repeat;
+    char *		outbuf;
+    int			outsize;
+    int			outtop;
+    protocol_t *        pProtocol; /* <--- Add this line */
+};
+
+/***************************************************************************
+ * File: update.c
+ * 
+ * Add msdp_update() to the list of local functions near the top of the file.
+ ***************************************************************************/
+
+int	hit_gain	args( ( CHAR_DATA *ch ) );
+int	mana_gain	args( ( CHAR_DATA *ch ) );
+int	move_gain	args( ( CHAR_DATA *ch ) );
+void	mobile_update	args( ( void ) );
+void	weather_update	args( ( void ) );
+void	char_update	args( ( void ) );
+void	obj_update	args( ( void ) );
+void	aggr_update	args( ( void ) );
+void	msdp_update	args( ( void ) ); /* <--- Add this line */
+
+/***************************************************************************
+ * File: update.c
+ * 
+ * Add a new msdp_update() function.
+ ***************************************************************************/
+
+void msdp_update( void )
+{
+    DESCRIPTOR_DATA *d;
+    int PlayerCount = 0;
+
+    for ( d = descriptor_list; d != NULL; d = d->next )
+    {
+	if ( d->character && d->connected == CON_PLAYING && !IS_NPC(d->character) )
+        {
+            char buf[MAX_STRING_LENGTH];
+            CHAR_DATA *pOpponent = d->character->fighting;
+            ROOM_INDEX_DATA *pRoom = d->character->in_room;
+            AFFECT_DATA *paf;
+
+            ++PlayerCount;
+
+            MSDPSetString( d, eMSDP_CHARACTER_NAME, d->character->name );
+            MSDPSetNumber( d, eMSDP_ALIGNMENT, d->character->alignment );
+            MSDPSetNumber( d, eMSDP_EXPERIENCE, d->character->exp );
+/*
+            MSDPSetNumber( d, eMSDP_EXPERIENCE_MAX, TBD );
+            MSDPSetNumber( d, eMSDP_EXPERIENCE_TNL, TBD );
+*/
+            MSDPSetNumber( d, eMSDP_HEALTH, d->character->hit );
+            MSDPSetNumber( d, eMSDP_HEALTH_MAX, d->character->max_hit );
+            MSDPSetNumber( d, eMSDP_LEVEL, d->character->level );
+/*
+            MSDPSetString( d, eMSDP_RACE, TBD );
+*/
+            MSDPSetString( d, eMSDP_CLASS, class_table[d->character->class].who_name );
+            MSDPSetNumber( d, eMSDP_MANA, d->character->mana );
+            MSDPSetNumber( d, eMSDP_MANA_MAX, d->character->max_mana );
+            MSDPSetNumber( d, eMSDP_WIMPY, d->character->wimpy );
+            MSDPSetNumber( d, eMSDP_PRACTICE, d->character->practice );
+            MSDPSetNumber( d, eMSDP_MONEY, d->character->gold );
+            MSDPSetNumber( d, eMSDP_MOVEMENT, d->character->move );
+            MSDPSetNumber( d, eMSDP_MOVEMENT_MAX, d->character->max_move );
+            MSDPSetNumber( d, eMSDP_HITROLL, GET_HITROLL(d->character) );
+            MSDPSetNumber( d, eMSDP_DAMROLL, GET_DAMROLL(d->character) );
+            MSDPSetNumber( d, eMSDP_AC, GET_AC(d->character) );
+            MSDPSetNumber( d, eMSDP_STR, get_curr_str(d->character) );
+            MSDPSetNumber( d, eMSDP_INT, get_curr_int(d->character) );
+            MSDPSetNumber( d, eMSDP_WIS, get_curr_wis(d->character) );
+            MSDPSetNumber( d, eMSDP_DEX, get_curr_dex(d->character) );
+            MSDPSetNumber( d, eMSDP_CON, get_curr_con(d->character) );
+            MSDPSetNumber( d, eMSDP_STR_PERM, d->character->pcdata->perm_str );
+            MSDPSetNumber( d, eMSDP_INT_PERM, d->character->pcdata->perm_int );
+            MSDPSetNumber( d, eMSDP_WIS_PERM, d->character->pcdata->perm_wis );
+            MSDPSetNumber( d, eMSDP_DEX_PERM, d->character->pcdata->perm_dex );
+            MSDPSetNumber( d, eMSDP_CON_PERM, d->character->pcdata->perm_con );
+
+            /* This would be better moved elsewhere */
+            if ( pOpponent != NULL )
+            {
+                int hit_points = (pOpponent->hit * 100) / pOpponent->max_hit;
+                MSDPSetNumber( d, eMSDP_OPPONENT_HEALTH, hit_points );
+                MSDPSetNumber( d, eMSDP_OPPONENT_HEALTH_MAX, 100 );
+                MSDPSetNumber( d, eMSDP_OPPONENT_LEVEL, pOpponent->level );
+                MSDPSetString( d, eMSDP_OPPONENT_NAME, pOpponent->name );
+            }
+            else /* Clear the values */
+            {
+                MSDPSetNumber( d, eMSDP_OPPONENT_HEALTH, 0 );
+                MSDPSetNumber( d, eMSDP_OPPONENT_LEVEL, 0 );
+                MSDPSetString( d, eMSDP_OPPONENT_NAME, "" );
+            }
+
+            /* Only update room stuff if they've changed room */
+            if ( pRoom && pRoom->vnum != d->pProtocol->pVariables[eMSDP_ROOM_VNUM]->ValueInt )
+            {
+                int i; /* Loop counter */
+                buf[0] = '\0';
+
+                for ( i = DIR_NORTH; i <= DIR_DOWN; ++i )
+                {
+                    if ( pRoom->exit[i] != NULL )
+                    {
+                        const char MsdpVar[] = { (char)MSDP_VAR, '\0' };
+                        const char MsdpVal[] = { (char)MSDP_VAL, '\0' };
+                        extern char *const dir_name[];
+
+                        strcat( buf, MsdpVar );
+                        strcat( buf, dir_name[i] );
+                        strcat( buf, MsdpVal );
+
+                        if ( IS_SET(pRoom->exit[i]->exit_info, EX_CLOSED) )
+                            strcat( buf, "C" );
+                        else /* The exit is open */
+                            strcat( buf, "O" );
+                    }
+                }
+
+                if ( pRoom->area != NULL )
+                    MSDPSetString( d, eMSDP_AREA_NAME, pRoom->area->name );
+
+                MSDPSetString( d, eMSDP_ROOM_NAME, pRoom->name );
+                MSDPSetTable( d, eMSDP_ROOM_EXITS, buf );
+                MSDPSetNumber( d, eMSDP_ROOM_VNUM, pRoom->vnum );
+            }
+/*
+            MSDPSetNumber( d, eMSDP_WORLD_TIME, d->character-> );
+*/
+
+            buf[0] = '\0';
+            for ( paf = d->character->affected; paf; paf = paf->next )
+            {
+                char skill_buf[MAX_STRING_LENGTH];
+                sprintf( skill_buf, "%c%s%c%d",
+                    (char)MSDP_VAR, skill_table[paf->type].name, 
+                    (char)MSDP_VAL, paf->duration );
+                strcat( buf, skill_buf );
+            }
+            MSDPSetTable( d, eMSDP_AFFECTS, buf );
+
+            MSDPUpdate( d );
+        }
+    }
+
+    /* Ideally this should be called once at startup, and again whenever 
+     * someone leaves or joins the mud.  But this works, and it keeps the 
+     * snippet simple.  Optimise as you see fit.
+     */
+    MSSPSetPlayers( PlayerCount );
+}
+
+/***************************************************************************
+ * File: update.c
+ * 
+ * Call msdp_update() from within the update_handler.
+ ***************************************************************************/
+
+void update_handler( void )
+{
+    static  int     pulse_gain_exp;
+    static  int     pulse_area;
+    static  int     pulse_mobile;
+    static  int     pulse_violence;
+    static  int     pulse_point;
+    static  int     pulse_msdp; /* <--- Add this line */
+
+Then further down in the function, call msdp_update():
+
+    if ( --pulse_msdp <= 0 )
+    {
+        pulse_msdp      = PULSE_PER_SECOND;
+        msdp_update();
+    }
+
+/***************************************************************************
+ * File: comm.c
+ * 
+ * Add the protocol data to the descriptor in the new_descriptor() function.
+ ***************************************************************************/
+
+    *dnew		= d_zero;
+    dnew->descriptor	= desc;
+    dnew->character	= NULL;
+    dnew->connected	= CON_GET_NAME;
+    dnew->outsize	= 2000;
+    dnew->outbuf	= alloc_mem( dnew->outsize );
+    dnew->pProtocol     = ProtocolCreate(); /* <--- Add this line */
+
+And later in the same function:
+
+    /*
+     * Init descriptor data.
+     */
+    dnew->next			= descriptor_list;
+    descriptor_list		= dnew;
+
+    ProtocolNegotiate(dnew); /* <--- Add this line */
+
+/***************************************************************************
+ * File: comm.c
+ * 
+ * Free the protocol data at the end of the close_socket() function.
+ * 
+ * If this is a GodWars mud, do the same again in close_socket2().
+ ***************************************************************************/
+
+    ProtocolDestroy( dclose->pProtocol ); /* <--- Add this line */
+
+    dclose->next	= descriptor_free;
+    descriptor_free	= dclose;
+#if defined(MSDOS) || defined(macintosh)
+    exit(1);
+#endif
+    return;
+}
+
+/***************************************************************************
+ * File: comm.c
+ * 
+ * Change read_from_descriptor() to parse negotiation sequences.
+ ***************************************************************************/
+
+bool read_from_descriptor( DESCRIPTOR_DATA *d )
+{
+    int iStart;
+
+    static char read_buf[MAX_PROTOCOL_BUFFER]; /* <--- Add this line */
+    read_buf[0] = '\0';                        /* <--- Add this line */
+
+Replace this:
+
+    /* Check for overflow. */
+    iStart = strlen(d->inbuf);
+    if ( iStart >= sizeof(d->inbuf) - 10 )
+
+With this:
+
+    /* Check for overflow. */
+    iStart = 0;
+    if ( strlen(d->inbuf) >= sizeof(d->inbuf) - 10 )
+
+Replace this:
+
+	if ( c == '\r' )
+	    putc( '\n', stdout );
+	d->inbuf[iStart++] = c;
+
+With this:
+
+	if ( c == '\r' )
+	    putc( '\n', stdout );
+	read_buf[iStart++] = c;
+
+Replace this:
+
+	nRead = read( d->descriptor, d->inbuf + iStart,
+	    sizeof(d->inbuf) - 10 - iStart );
+	if ( nRead > 0 )
+	{
+	    iStart += nRead;
+	    if ( d->inbuf[iStart-1] == '\n' || d->inbuf[iStart-1] == '\r' )
+		break;
+	}
+
+With this:
+
+	nRead = read( d->descriptor, read_buf + iStart,
+	    sizeof(read_buf) - 10 - iStart );
+	if ( nRead > 0 )
+	{
+	    iStart += nRead;
+	    if ( read_buf[iStart-1] == '\n' || read_buf[iStart-1] == '\r' )
+		break;
+	}
+
+Then at the end of the function replace this:
+
+    d->inbuf[iStart] = '\0';
+    return TRUE;
+
+With this:
+
+    read_buf[iStart] = '\0';
+    ProtocolInput( d, read_buf, iStart, d->inbuf );
+    return TRUE;
+
+/***************************************************************************
+ * File: comm.c
+ * 
+ * Change write_to_buffer() to avoid sending blank lines.
+ ***************************************************************************/
+
+At the beginning of the function, add this:
+
+void write_to_buffer( DESCRIPTOR_DATA *d, const char *txt, int length )
+{
+    txt = ProtocolOutput( d, txt, &length );  /* <--- Add this line */
+    if ( d->pProtocol->WriteOOB > 0 )         /* <--- Add this line */
+        --d->pProtocol->WriteOOB;             /* <--- Add this line */
+
+Replace this:
+
+    /*
+     * Initial \n\r if needed.
+     */
+    if ( d->outtop == 0 && !d->fcommand )
+
+With this:
+
+    /*
+     * Initial \n\r if needed.
+     */
+    if ( d->outtop == 0 && !d->fcommand && !d->pProtocol->WriteOOB )
+
+/***************************************************************************
+ * File: comm.c
+ * 
+ * In nanny(), send the <VERSION> tag right after the player enters the game.
+ ***************************************************************************/
+
+        act( "$n has entered the game.", ch, NULL, NULL, TO_ROOM );
+        MXPSendTag( d, "<VERSION>" );  /* <--- Add this line */
+
+You should also do the same after reconnecting - in check_reconnect() and 
+check_kickoff() (if you've got such a function), right after this line:
+
+        d->connected = CON_PLAYING
+
+You should once again add:
+
+        MXPSendTag( d, "<VERSION>" );  /* <--- Add this line */
+
+/***************************************************************************
+ * File: comm.c
+ * 
+ * Change process_output() to avoid sending a prompt after sending OOB data.
+ ***************************************************************************/
+
+bool process_output( DESCRIPTOR_DATA *d, bool fPrompt )
+{
+    extern bool merc_down;
+
+    /*
+     * Bust a prompt.
+     */
+    if ( d->pProtocol->WriteOOB ) /* <-- Add this, and the ";" and "else" */
+        ; /* The last sent data was OOB, so do NOT draw the prompt */
+    else if ( fPrompt && !merc_down && d->connected == CON_PLAYING )
+
+/***************************************************************************
+ * File: comm.c
+ * 
+ * Whenever a command has been sent, clear the write OOB
+ ***************************************************************************/
+
+    d->fcommand     = TRUE;
+
+    if ( d->pProtocol != NULL )
+        d->pProtocol->WriteOOB = 0;
+
+/***************************************************************************
+ * File: comm.c
+ * 
+ * Replace the echo_off_str and echo_on_str with the new ECHO function.
+ ***************************************************************************/
+
+Replace this line:
+
+    write_to_buffer( d, echo_off_str, 0 );
+
+With the following:
+
+    ProtocolNoEcho( d, true );
+
+And these lines:
+
+    sprintf( buf, "New character.\n\rGive me a password for %s: %s",
+        ch->name, echo_off_str );
+
+With the following:
+
+    ProtocolNoEcho( d, true );
+    sprintf( buf, "New character.\n\rGive me a password for %s: ",
+        ch->name );
+
+Then replace both instances of this line:
+
+    write_to_buffer( d, echo_on_str, 0 );
+
+With the following:
+
+    ProtocolNoEcho( d, false );

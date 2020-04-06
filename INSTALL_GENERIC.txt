@@ -1,0 +1,162 @@
+/******************************************************************************
+ Protocol snippet by KaVir.  Released into the Public Domain in February 2011.
+ ******************************************************************************/
+
+In protocol.h:
+
+   Update MUD_NAME and descriptor_t for your mud.
+
+In protocol.c:
+
+   Update the Write(), ReportBug() and InfoMessage() functions.
+
+   Update the fields in the SendMSSP() function.
+
+In your makefile:
+
+   Add protocol.o to the list of object files.
+
+Don't forget:
+
+   #include protocol.h in each file that uses the snippet.
+
+/***************************************************************************
+ * Add the protocol pointer to the end of the data structure that contains 
+ * each players' descriptor and other connection information.
+ ***************************************************************************/
+
+struct descriptor_t
+{
+   ...other variables are listed here...
+
+   protocol_t *pProtocol;
+};
+
+/***************************************************************************
+ * Create an update function, it should be called at least once per second.
+ * 
+ * Alternatively, call MSDPSetString() and MSDPSetNumber() at the specific 
+ * places in the code where those values change.  For example, if you're 
+ * using C++ and the values are changed through Set and Get methods, you 
+ * could set the MSDP variables there.
+ ***************************************************************************/
+
+void msdp_update( void )
+{
+   int PlayerCount = 0;
+
+   loop through every fully connected player descriptor
+   {
+      ++PlayerCount;
+
+      MSDPSetString( descriptor, eMSDP_CHARACTER_NAME, name );
+      MSDPSetNumber( descriptor, eMSDP_HEALTH, current hit points );
+      MSDPSetNumber( descriptor, eMSDP_HEALTH_MAX, maximum hit points );
+      MSDPSetNumber( descriptor, eMSDP_MANA, current mana );
+      MSDPSetNumber( descriptor, eMSDP_MANA_MAX, maximum mana );
+      MSDPSetNumber( descriptor, eMSDP_MOVEMENT, current movement points );
+      MSDPSetNumber( descriptor, eMSDP_MOVEMENT_MAX, maximum movement points );
+
+      ...continue setting all your variables here...
+
+      MSDPUpdate( descriptor ); /* Flush all the dirty variables */
+   }
+
+   /* Ideally this should be called once at startup, and again whenever 
+    * someone leaves or joins the mud.  But this works, and it keeps the 
+    * snippet simple.  Optimise as you see fit.
+    */
+   MSSPSetPlayers( PlayerCount );
+}
+
+
+/***************************************************************************
+ * Initialise the protocol data when a new descriptor structure is allocated.
+ ***************************************************************************/
+
+   new_descriptor = new/malloc/etc space for one descriptor_t
+   new_descriptor->blah = ...
+   new_descriptor->blah = ...
+   new_descriptor->blah = ...
+
+   ...and so on, until we reach the end...
+
+   new_descriptor->pProtocol = ProtocolCreate();
+
+Once the descriptor has been fully created and added to any lists, it's time 
+to negotiate:
+
+   ProtocolNegotiate(new_descriptor);
+
+/***************************************************************************
+ * Free the protocol data when a socket is closed.
+ ***************************************************************************/
+
+   ProtocolDestroy( dclose->pProtocol );
+
+/***************************************************************************
+ * When data is read in from a descriptor, read it into a temporary buffer 
+ * first, and send that to ProtocolInput to parse.
+ ***************************************************************************/
+
+   static char temporary_buffer[MAX_PROTOCOL_BUFFER];
+   temporary_buffer[0] = '\0';
+
+   ...copy everything into the temporary_buffer...
+
+   ProtocolInput( d, read_buf, iStart, descriptor->input_buffer );
+
+   ...the rest of the mud can now use descriptor->input_buffer as normal...
+
+/***************************************************************************
+ * When data is written out to a descriptor, send it to ProtocolOutput first 
+ * to parse any special variables for colour, MXP, UTF-8, etc.
+ ***************************************************************************/
+
+   ...where "string_to_send" is passed into the function...
+
+   string_to_send = ProtocolOutput( descriptor, string_to_send, NULL );
+   if ( descriptor->pProtocol->WriteOOB > 0 )
+      --descriptor->pProtocol->WriteOOB;
+
+   Only send a newline if descriptor->pProtocol->WriteOOB > 0
+
+/***************************************************************************
+ * Send the MXP <VERSION> tag immediately after a player enters the game or 
+ * reconnects to an existing character.
+ ***************************************************************************/
+
+   ...the user is sent a "you enter the game" or "you reconnect" message...
+
+   MXPSendTag( descriptor, "<VERSION>" );
+
+/***************************************************************************
+ * Don't send a new prompt to the user if they've only received OOB data 
+ * since the last time they received a prompt.
+ ***************************************************************************/
+
+   if ( d->pProtocol->WriteOOB )
+      ; /* The last sent data was OOB, so do NOT draw the prompt */
+   else
+      ...normal prompt drawing code follow...
+
+/***************************************************************************
+ * Whenever the user sends a command, clear the WriteOOB counter.
+ ***************************************************************************/
+
+   descriptor->entered_command = true;
+
+   if ( descriptor->pProtocol != NULL )
+      descriptor->pProtocol->WriteOOB = 0;
+
+/***************************************************************************
+ * Whenever you wish to toggle ECHO on or off.
+ ***************************************************************************/
+
+Send the following when you wish to stop echoing text to the user's client:
+
+    ProtocolNoEcho( descriptor, true );
+
+Send the following when you wish to start echoing again:
+
+    ProtocolNoEcho( descriptor, false );
