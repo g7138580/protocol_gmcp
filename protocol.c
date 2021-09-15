@@ -356,7 +356,7 @@ protocol_t *ProtocolCreate( void )
 
 	/*************** START GMCP ***************/
 	pProtocol->bGMCP = false;
-	pProtocol->bSGA = true;
+	pProtocol->bSGA = false;
 
 	for ( i = 0; i < GMCP_SUPPORT_MAX; i++ )
 		pProtocol->bGMCPSupport[i] = 0;
