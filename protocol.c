@@ -1203,6 +1203,12 @@ void CopyoverSet( descriptor_t *apDescriptor, const char *apData )
       {
          ConfirmNegotiation(apDescriptor, eNEGOTIATED_ATCP, true, true);
       }
+/*************** START GMCP ***************/
+	   else if ( pProtocol->bGMCP )
+	   {
+		   ConfirmNegotiation(apDescriptor, eNEGOTIATED_GMCP, true, true );
+	   }
+/*************** END GMCP ***************/
 
       /* Ask the client to send its MXP version again */
       if ( pProtocol->bMXP )
