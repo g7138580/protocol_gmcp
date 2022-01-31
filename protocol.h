@@ -276,6 +276,8 @@ typedef enum
 
 typedef enum
 {
+	GMCP_CORE_NONE = -1,
+	
 	GMCP_CORE_HELLO,
 	GMCP_CORE_SUPPORTS_SET,
 	GMCP_CORE_SUPPORTS_ADD,
@@ -287,6 +289,8 @@ typedef enum
 
 typedef enum
 {
+	GMCP_SUPPORT_NONE = -1,
+	
 	GMCP_SUPPORT_CHAR,
 	GMCP_SUPPORT_ROOM,
 	GMCP_SUPPORT_MAX
@@ -294,6 +298,8 @@ typedef enum
 
 typedef enum
 {
+	GMCP_NONE = -1,
+	
 	GMCP_BASE,
 	GMCP_VITALS,
 	GMCP_STATS,
@@ -307,6 +313,8 @@ typedef enum
 
 typedef enum
 {
+	GMCP_NULL	= -1,
+	
 	/* Hello */
 	GMCP_CLIENT,
 	GMCP_VERSION,
